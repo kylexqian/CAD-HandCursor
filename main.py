@@ -1,7 +1,9 @@
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
-import mouse
+# import mouse
+import pyautogui as pg
+# import math
 
 # mouse.click('right')
 # print(mouse.get_position())
@@ -12,8 +14,8 @@ class HandCursor:
         self.camera = camera
 
         # Skin color segmentation mask (HSV)
-        self.HSV_min = np.array([0,40,45],np.uint8) # 0,40,50 | 0, 20, 70
-        self.HSV_max = np.array([50,255,255],np.uint8) #50,250,255 | 20, 255, 255
+        self.HSV_min = np.array([0,20,70],np.uint8) # 0,40,50 | 0, 20, 70
+        self.HSV_max = np.array([20,255,255],np.uint8) #50,250,255 | 20, 255, 255
 
     def run(self, result=False, raw=False, HSV=False, contour=False):
         # get camera (default 0)
@@ -30,7 +32,7 @@ class HandCursor:
             print('Error reading video')
         if result:
             fourcc = cv.VideoWriter_fourcc(*'MJPG')
-            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, 20, (frame_width,frame_height))
+            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, 30, (frame_width,frame_height))
         if raw:
             fourcc1 = cv.VideoWriter_fourcc(*'MJPG')
             raw_video = cv.VideoWriter('Results/raw.avi', fourcc1, 20, (frame_width,frame_height))
@@ -42,6 +44,27 @@ class HandCursor:
             contour_video = cv.VideoWriter('Results/contour.avi', fourcc3, 20, (frame_width,frame_height))
 
         ### main loop ###
+        # distance calculate function
+        def dist(p1, p2):
+            return ((p1[0]-p2[0])**2+(p1[1]-p2[1])**2)**0.5
+
+        # Cursor movement setup
+        pointer = None
+        prev_pointer = None
+        distance_array = []
+        filter_size = 5
+        scale_factor_x = 3
+        scale_factor_y = 5
+
+        # finger counting
+        count_array = []
+        count_size = 2
+        official_count = 1
+
+        # state
+        state = 1
+
+        # loop
         while True:
             ### Image Processing ###
             # Read video and flip
@@ -65,9 +88,10 @@ class HandCursor:
             kernel = np.ones((9,9)) # 7x7 kernel
             skin_img = cv.erode(skin_img,  kernel, iterations=1)
             skin_img = cv.dilate(skin_img, kernel, iterations=1)
+            # skin_img = cv.dilate(skin_img, np.ones((3,3)), iterations=1)
 
             # blur image
-            skin_img = cv.GaussianBlur(skin_img, (5,5), 0) # 5x5 kernel and 0 STD
+            skin_img = cv.GaussianBlur(skin_img, (7,7), 0) # 7x7 kernel and 0 STD
 
             # skin mask result (and video)
             cv.imshow('skin mask', skin_img)
@@ -94,16 +118,81 @@ class HandCursor:
                     hull = cv.convexHull(hand)
                     cv.drawContours(contour_frame, [hull], 0, (0, 255, 0),3)
 
+                    # find defects
+                    hull = cv.convexHull(hand, returnPoints=False)
+                    defects = cv.convexityDefects(hand, hull)
+
+                    # find number of fingers
+                    count = 1
+                    for i in range(defects.shape[0]):
+                        s, e, f, d = defects[i, 0]
+                        start = tuple(hand[s][0])
+                        end = tuple(hand[e][0])
+                        far = tuple(hand[f][0])
+                        a = np.sqrt((end[0]-start[0])**2+(end[1]-start[1])**2)
+                        b = np.sqrt((far[0]-start[0])**2+(far[1]-start[1])**2)
+                        c = np.sqrt((end[0]-far[0])**2+(end[1]-far[1])**2)
+                        angle = np.arccos((b**2+c**2-a**2)/(2*b*c))*57
+                        if angle <= 90:
+                            count += 1
+                        cv.circle(contour_frame, far, 5, [0, 0, 255], -1)
+                        cv.line(contour_frame, start, end, [0, 255, 0], 2)
+
+                    # filter to ensure no finger jumps
+                    # official_count = count
+                    count_array.append(count)
+                    if len(count_array) > count_size:
+                        count_array.pop(0)
+                        ca = np.array(count_array)
+                        if np.all(ca == ca[0]):
+                            official_count = count
+                    if len(count_array) < count_size:
+                        pass
+
                     # optional video save
                     if contour: contour_video.write(contour_frame)
 
+                    ### movement & states ###
+                    # get pointer
+                    pointer = tuple(hand[hand[:,:,1].argmin()][0])
+                    cv.circle(contour_frame, pointer, 5, (0,0,255), 3)
+
+                    # x-y motion
+                    if prev_pointer and dist(pointer, prev_pointer) <= 100:
+                        # moving average filter
+                        distance = ((pointer[0]-prev_pointer[0])*scale_factor_x, (pointer[1]-prev_pointer[1])*scale_factor_y)
+                        distance_array.append(distance)
+                        if len(distance_array) > filter_size:
+                            distance_array.pop(0)
+                            da = np.array(distance_array)
+                            x_val = np.sum(da,axis=0)[0]//filter_size
+                            y_val = np.sum(da,axis=0)[1]//filter_size
+                            pg.move(x_val, y_val)
+                        if len(distance_array) < filter_size:
+                            pass
+
+                        #  state stuff
+                        if official_count == 1:
+                            state = 1
+                        if official_count == 2 and state != 2:
+                            state = 2
+                            pg.click()
+
+
+                    prev_pointer = pointer
+
 
             # cv.imshow('RGB', RGB_image)
+            cv.putText(contour_frame, "finger count" + str(official_count), (0,25), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv.imshow('Contour Frame', contour_frame)
 
+            # optional video save
+            if result: result_video.write(contour_frame)
 
             # break if press q
             if cv.waitKey(1) & 0xFF == ord('q'):
+                # just incase
+                pg.keyUp('ctrl')
                 break
 
         # close camera
