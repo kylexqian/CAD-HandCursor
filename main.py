@@ -6,7 +6,7 @@ import pyautogui as pg
 # import math
 
 # mouse.click('right')
-# print(mouse.get_position())
+# prinsssssssSt(mouse.get_position())
 
 class HandCursor:
     def __init__(self, camera=0):
@@ -14,10 +14,10 @@ class HandCursor:
         self.camera = camera
 
         # Skin color segmentation mask (HSV)
-        self.HSV_min = np.array([0,20,70],np.uint8) # 0,40,50 | 0, 20, 70
-        self.HSV_max = np.array([20,255,255],np.uint8) #50,250,255 | 20, 255, 255
+        self.HSV_min = np.array([0,40,50],np.uint8) # 0,40,50 | 0, 20, 70
+        self.HSV_max = np.array([50,250,255],np.uint8) #50,250,255 | 20, 255, 255
 
-    def run(self, result=False, raw=False, HSV=False, contour=False):
+    def run(self, fps=20, result=False, raw=False, HSV=False, contour=False):
         # get camera (default 0)
         print('Setting up camera...')
         video = cv.VideoCapture(self.camera)
@@ -32,16 +32,16 @@ class HandCursor:
             print('Error reading video')
         if result:
             fourcc = cv.VideoWriter_fourcc(*'MJPG')
-            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, 6, (frame_width,frame_height))
+            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, fps, (frame_width,frame_height))
         if raw:
             fourcc1 = cv.VideoWriter_fourcc(*'MJPG')
-            raw_video = cv.VideoWriter('Results/raw.avi', fourcc1, 20, (frame_width,frame_height))
+            raw_video = cv.VideoWriter('Results/raw.avi', fourcc1, fps, (frame_width,frame_height))
         if HSV:
             fourcc2 = cv.VideoWriter_fourcc(*'MJPG')
-            HSV_video = cv.VideoWriter('Results/HSV_mask.avi', fourcc2, 20, (frame_width,frame_height))
+            HSV_video = cv.VideoWriter('Results/HSV_mask.avi', fourcc2, fps, (frame_width,frame_height))
         if contour:
             fourcc3 = cv.VideoWriter_fourcc(*'MJPG')
-            contour_video = cv.VideoWriter('Results/contour.avi', fourcc3, 20, (frame_width,frame_height))
+            contour_video = cv.VideoWriter('Results/contour.avi', fourcc3, fps, (frame_width,frame_height))
 
         ### main loop ###
         # distance calculate function
@@ -52,13 +52,13 @@ class HandCursor:
         pointer = None
         prev_pointer = None
         distance_array = []
-        filter_size = 5
-        scale_factor_x = 3
-        scale_factor_y = 4
+        filter_size = 5 # how large you want your average filter
+        scale_factor_x = 3 # scaling x
+        scale_factor_y = 3 # scaling y
 
         # finger counting
         count_array = []
-        count_size = 2
+        count_size = 2 # count array size (like average filter but with np.all)
         official_count = 1
 
         # state
@@ -88,7 +88,7 @@ class HandCursor:
             kernel = np.ones((9,9)) # 7x7 kernel
             skin_img = cv.erode(skin_img,  kernel, iterations=1)
             skin_img = cv.dilate(skin_img, kernel, iterations=1)
-            # skin_img = cv.dilate(skin_img, np.ones((3,3)), iterations=1)
+            skin_img = cv.dilate(skin_img, np.ones((5,5)), iterations=1)
 
             # blur image
             skin_img = cv.GaussianBlur(skin_img, (7,7), 0) # 7x7 kernel and 0 STD
@@ -157,35 +157,44 @@ class HandCursor:
                     pointer = tuple(hand[hand[:,:,1].argmin()][0])
                     cv.circle(contour_frame, pointer, 5, (0,0,255), 3)
 
-                    # x-y motion
+                    # hand detected
                     if prev_pointer and dist(pointer, prev_pointer) <= 100:
-                        # moving average filter
-                        distance = ((pointer[0]-prev_pointer[0])*scale_factor_x, (pointer[1]-prev_pointer[1])*scale_factor_y)
-                        distance_array.append(distance)
-                        if len(distance_array) > filter_size:
-                            distance_array.pop(0)
-                            da = np.array(distance_array)
-                            x_val = np.sum(da,axis=0)[0]//filter_size
-                            y_val = np.sum(da,axis=0)[1]//filter_size
-                            pg.move(x_val, y_val)
-                        if len(distance_array) < filter_size:
-                            pass
-
-                        #  state stuff
+                        ### states ###
+                        # these are of course alterable dependent on CAD shortcuts/desired usability
+                        # state 1: movement
                         if official_count == 1:
-                            # pg.keyUp('ctrl')
-                            pg.keyUp('middle')
                             state = 1
+                            # moving average filter for movement
+                            distance = ((pointer[0]-prev_pointer[0])*scale_factor_x, (pointer[1]-prev_pointer[1])*scale_factor_y)
+                            distance_array.append(distance)
+                            if len(distance_array) > filter_size:
+                                distance_array.pop(0)
+                                da = np.array(distance_array)
+                                x_val = np.sum(da,axis=0)[0]//filter_size
+                                y_val = np.sum(da,axis=0)[1]//filter_size
+                                pg.move(x_val, y_val)
+                            if len(distance_array) < filter_size:
+                                pass
+                        # state 2: left click
                         if official_count == 2 and state != 2:
-                            # pg.keyUp('ctrl')
-                            pg.keyUp('middle')
                             state = 2
+                            cv.putText(contour_frame, "Lclick!", (0,50), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
                             pg.click()
-                        if official_count == 3:
-                            # pg.keyDown('')
-                            pg.keyDown('middle')
-                            # pg.drag(x_val, y_val, button='middle')
-
+                        # state 3: sketch
+                        if official_count == 3 and state != 3:
+                            state = 3
+                            cv.putText(contour_frame, "Sketch", (0,50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                            pg.press('s')
+                        # state 4: extrude
+                        if official_count == 4 and state != 4:
+                            state = 4
+                            cv.putText(contour_frame, "Extrude", (0,50), cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+                            pg.press('e')
+                        # state 5: enter
+                        if official_count == 5 and state != 5:
+                            state = 5
+                            cv.putText(contour_frame, "Enter", (0,50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            pg.press('enter')
 
                     prev_pointer = pointer
 
@@ -209,6 +218,6 @@ class HandCursor:
         cv.destroyAllWindows()
 
 cursor = HandCursor()
-cursor.run(result=True, raw=False, HSV=False, contour=False)
+cursor.run(fps=20, result=True, raw=True, HSV=True, contour=True)
 # cursor.run(raw=True, HSV=True)
 #
