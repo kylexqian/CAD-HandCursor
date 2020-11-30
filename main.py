@@ -32,7 +32,7 @@ class HandCursor:
             print('Error reading video')
         if result:
             fourcc = cv.VideoWriter_fourcc(*'MJPG')
-            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, 30, (frame_width,frame_height))
+            result_video = cv.VideoWriter('Results/result_video.avi', fourcc, 6, (frame_width,frame_height))
         if raw:
             fourcc1 = cv.VideoWriter_fourcc(*'MJPG')
             raw_video = cv.VideoWriter('Results/raw.avi', fourcc1, 20, (frame_width,frame_height))
@@ -54,7 +54,7 @@ class HandCursor:
         distance_array = []
         filter_size = 5
         scale_factor_x = 3
-        scale_factor_y = 5
+        scale_factor_y = 4
 
         # finger counting
         count_array = []
@@ -173,10 +173,18 @@ class HandCursor:
 
                         #  state stuff
                         if official_count == 1:
+                            # pg.keyUp('ctrl')
+                            pg.keyUp('middle')
                             state = 1
                         if official_count == 2 and state != 2:
+                            # pg.keyUp('ctrl')
+                            pg.keyUp('middle')
                             state = 2
                             pg.click()
+                        if official_count == 3:
+                            # pg.keyDown('')
+                            pg.keyDown('middle')
+                            # pg.drag(x_val, y_val, button='middle')
 
 
                     prev_pointer = pointer
@@ -201,6 +209,6 @@ class HandCursor:
         cv.destroyAllWindows()
 
 cursor = HandCursor()
-cursor.run(result=False, raw=False, HSV=False, contour=False)
+cursor.run(result=True, raw=False, HSV=False, contour=False)
 # cursor.run(raw=True, HSV=True)
 #
