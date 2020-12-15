@@ -1,12 +1,6 @@
 import cv2 as cv
-import matplotlib.pyplot as plt
 import numpy as np
-# import mouse
 import pyautogui as pg
-# import math
-
-# mouse.click('right')
-# prinsssssssSt(mouse.get_position())
 
 class HandCursor:
     def __init__(self, camera=0):
